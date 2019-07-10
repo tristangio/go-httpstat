@@ -56,9 +56,6 @@ type Result struct {
 }
 
 func (r *Result) durations() map[string]time.Duration {
-	r.m.Lock()
-	defer r.m.Unlock()
-
 	return map[string]time.Duration{
 		"DNSLookup":        r.DNSLookup,
 		"TCPConnection":    r.TCPConnection,
@@ -72,6 +69,14 @@ func (r *Result) durations() map[string]time.Duration {
 		"StartTransfer": r.StartTransfer,
 		"Total":         r.total,
 	}
+}
+
+// GetDurations return duration
+func (r *Result) GetDurations() map[string]time.Duration {
+	r.m.Lock()
+	defer r.m.Unlock()
+
+	return r.durations()
 }
 
 // Format formats stats result.
