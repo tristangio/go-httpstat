@@ -71,14 +71,6 @@ func (r *Result) durations() map[string]time.Duration {
 	}
 }
 
-// GetDurations return duration
-func (r *Result) GetDurations() map[string]time.Duration {
-	r.m.Lock()
-	defer r.m.Unlock()
-
-	return r.durations()
-}
-
 // Format formats stats result.
 func (r Result) Format(s fmt.State, verb rune) {
 	r.m.Lock()

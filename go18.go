@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/tls"
 	"net/http/httptrace"
+	"sync"
 	"time"
 )
 
@@ -41,21 +42,33 @@ func (r *Result) Total(t time.Time) time.Duration {
 	return t.Sub(r.dnsStart)
 }
 
+// GetDurations return all durations
+// Set ContentTransfer and Total time with end time provided (must be UTC)
+func (r *Result) GetDurations(t time.Time) map[string]time.Duration {
+	r.m.Lock()
+	defer r.m.Unlock()
+
+	durations := r.durations()
+	durations["Total"] = r.Total(t)
+	durations["ContentTransfer"] = r.ContentTransfer(t)
+	return durations
+}
+
 func withClientTrace(ctx context.Context, r *Result) context.Context {
+	r.m = &sync.Mutex{}
 	return httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
 		DNSStart: func(i httptrace.DNSStartInfo) {
 			r.m.Lock()
 			defer r.m.Unlock()
 
-			r.dnsStart = time.Now()
-			r.t0 = r.dnsStart
+			r.dnsStart = time.Now().UTC()
 		},
 
 		DNSDone: func(i httptrace.DNSDoneInfo) {
 			r.m.Lock()
 			defer r.m.Unlock()
 
-			r.dnsDone = time.Now()
+			r.dnsDone = time.Now().UTC()
 			r.DNSLookup = r.dnsDone.Sub(r.dnsStart)
 			r.NameLookup = r.dnsDone.Sub(r.dnsStart)
 		},
@@ -64,7 +77,7 @@ func withClientTrace(ctx context.Context, r *Result) context.Context {
 			r.m.Lock()
 			defer r.m.Unlock()
 
-			r.tcpStart = time.Now()
+			r.tcpStart = time.Now().UTC()
 			// When connecting to IP (When no DNS lookup)
 			if r.dnsStart.IsZero() {
 				r.dnsStart = r.tcpStart
@@ -76,7 +89,7 @@ func withClientTrace(ctx context.Context, r *Result) context.Context {
 			r.m.Lock()
 			defer r.m.Unlock()
 
-			r.tcpDone = time.Now()
+			r.tcpDone = time.Now().UTC()
 			r.TCPConnection = r.tcpDone.Sub(r.tcpStart)
 			r.Connect = r.tcpDone.Sub(r.dnsStart)
 		},
@@ -86,14 +99,14 @@ func withClientTrace(ctx context.Context, r *Result) context.Context {
 			defer r.m.Unlock()
 
 			r.isTLS = true
-			r.tlsStart = time.Now()
+			r.tlsStart = time.Now().UTC()
 		},
 
 		TLSHandshakeDone: func(_ tls.ConnectionState, _ error) {
 			r.m.Lock()
 			defer r.m.Unlock()
 
-			r.tlsDone = time.Now()
+			r.tlsDone = time.Now().UTC()
 			r.TLSHandshake = r.tlsDone.Sub(r.tlsStart)
 			r.Pretransfer = r.tlsDone.Sub(r.dnsStart)
 		},
@@ -113,7 +126,7 @@ func withClientTrace(ctx context.Context, r *Result) context.Context {
 			r.m.Lock()
 			defer r.m.Unlock()
 
-			r.serverStart = time.Now()
+			r.serverStart = time.Now().UTC()
 			// When client doesn't use DialContext or using old (before go1.7) `net`
 			// pakcage, DNS/TCP/TLS hook is not called.
 			if r.dnsStart.IsZero() && r.tcpStart.IsZero() {
@@ -149,7 +162,7 @@ func withClientTrace(ctx context.Context, r *Result) context.Context {
 			r.m.Lock()
 			defer r.m.Unlock()
 
-			r.serverDone = time.Now()
+			r.serverDone = time.Now().UTC()
 			r.ServerProcessing = r.serverDone.Sub(r.serverStart)
 			r.StartTransfer = r.serverDone.Sub(r.dnsStart)
 			r.transferStart = r.serverDone
