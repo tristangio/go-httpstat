@@ -6,14 +6,16 @@ import (
 	"context"
 	"crypto/tls"
 	"net/http/httptrace"
-	"sync"
 	"time"
 )
 
 // End sets the time when reading response is done.
 // This must be called after reading response body.
 func (r *Result) End(t time.Time) {
-	r.trasferDone = t
+	r.m.Lock()
+	defer r.m.Unlock()
+
+	r.transferDone = t
 
 	// This means result is empty (it does nothing).
 	// Skip setting value(contentTransfer and total will be zero).
@@ -21,8 +23,8 @@ func (r *Result) End(t time.Time) {
 		return
 	}
 
-	r.contentTransfer = r.trasferDone.Sub(r.transferStart)
-	r.total = r.trasferDone.Sub(r.dnsStart)
+	r.contentTransfer = r.transferDone.Sub(r.transferStart)
+	r.total = r.transferDone.Sub(r.dnsStart)
 }
 
 // ContentTransfer returns the duration of content transfer time.
@@ -40,20 +42,20 @@ func (r *Result) Total(t time.Time) time.Duration {
 }
 
 func withClientTrace(ctx context.Context, r *Result) context.Context {
-	r.m = &sync.Mutex{}
 	return httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
 		DNSStart: func(i httptrace.DNSStartInfo) {
 			r.m.Lock()
 			defer r.m.Unlock()
 
 			r.dnsStart = time.Now()
+			r.t0 = r.dnsStart
 		},
 
 		DNSDone: func(i httptrace.DNSDoneInfo) {
 			r.m.Lock()
 			defer r.m.Unlock()
-			r.dnsDone = time.Now()
 
+			r.dnsDone = time.Now()
 			r.DNSLookup = r.dnsDone.Sub(r.dnsStart)
 			r.NameLookup = r.dnsDone.Sub(r.dnsStart)
 		},
@@ -61,8 +63,8 @@ func withClientTrace(ctx context.Context, r *Result) context.Context {
 		ConnectStart: func(_, _ string) {
 			r.m.Lock()
 			defer r.m.Unlock()
-			r.tcpStart = time.Now()
 
+			r.tcpStart = time.Now()
 			// When connecting to IP (When no DNS lookup)
 			if r.dnsStart.IsZero() {
 				r.dnsStart = r.tcpStart
@@ -112,7 +114,6 @@ func withClientTrace(ctx context.Context, r *Result) context.Context {
 			defer r.m.Unlock()
 
 			r.serverStart = time.Now()
-
 			// When client doesn't use DialContext or using old (before go1.7) `net`
 			// pakcage, DNS/TCP/TLS hook is not called.
 			if r.dnsStart.IsZero() && r.tcpStart.IsZero() {
@@ -149,10 +150,8 @@ func withClientTrace(ctx context.Context, r *Result) context.Context {
 			defer r.m.Unlock()
 
 			r.serverDone = time.Now()
-
 			r.ServerProcessing = r.serverDone.Sub(r.serverStart)
 			r.StartTransfer = r.serverDone.Sub(r.dnsStart)
-
 			r.transferStart = r.serverDone
 		},
 	})

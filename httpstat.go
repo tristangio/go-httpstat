@@ -46,7 +46,7 @@ type Result struct {
 	serverStart   time.Time
 	serverDone    time.Time
 	transferStart time.Time
-	trasferDone   time.Time // need to be provided from outside
+	transferDone  time.Time // need to be provided from outside
 
 	// isTLS is true when connection seems to use TLS
 	isTLS bool
@@ -56,6 +56,9 @@ type Result struct {
 }
 
 func (r *Result) durations() map[string]time.Duration {
+	r.m.Lock()
+	defer r.m.Unlock()
+
 	return map[string]time.Duration{
 		"DNSLookup":        r.DNSLookup,
 		"TCPConnection":    r.TCPConnection,
@@ -73,6 +76,9 @@ func (r *Result) durations() map[string]time.Duration {
 
 // Format formats stats result.
 func (r Result) Format(s fmt.State, verb rune) {
+	r.m.Lock()
+	defer r.m.Unlock()
+
 	switch verb {
 	case 'v':
 		if s.Flag('+') {
