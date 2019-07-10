@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/tls"
 	"net/http/httptrace"
+	"sync"
 	"time"
 )
 
@@ -39,12 +40,18 @@ func (r *Result) Total(t time.Time) time.Duration {
 }
 
 func withClientTrace(ctx context.Context, r *Result) context.Context {
+	r.m = &sync.Mutex{}
 	return httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
 		DNSStart: func(i httptrace.DNSStartInfo) {
+			r.m.Lock()
+			defer r.m.Unlock()
+
 			r.dnsStart = time.Now()
 		},
 
 		DNSDone: func(i httptrace.DNSDoneInfo) {
+			r.m.Lock()
+			defer r.m.Unlock()
 			r.dnsDone = time.Now()
 
 			r.DNSLookup = r.dnsDone.Sub(r.dnsStart)
@@ -52,6 +59,8 @@ func withClientTrace(ctx context.Context, r *Result) context.Context {
 		},
 
 		ConnectStart: func(_, _ string) {
+			r.m.Lock()
+			defer r.m.Unlock()
 			r.tcpStart = time.Now()
 
 			// When connecting to IP (When no DNS lookup)
@@ -62,25 +71,35 @@ func withClientTrace(ctx context.Context, r *Result) context.Context {
 		},
 
 		ConnectDone: func(network, addr string, err error) {
-			r.tcpDone = time.Now()
+			r.m.Lock()
+			defer r.m.Unlock()
 
+			r.tcpDone = time.Now()
 			r.TCPConnection = r.tcpDone.Sub(r.tcpStart)
 			r.Connect = r.tcpDone.Sub(r.dnsStart)
 		},
 
 		TLSHandshakeStart: func() {
+			r.m.Lock()
+			defer r.m.Unlock()
+
 			r.isTLS = true
 			r.tlsStart = time.Now()
 		},
 
 		TLSHandshakeDone: func(_ tls.ConnectionState, _ error) {
-			r.tlsDone = time.Now()
+			r.m.Lock()
+			defer r.m.Unlock()
 
+			r.tlsDone = time.Now()
 			r.TLSHandshake = r.tlsDone.Sub(r.tlsStart)
 			r.Pretransfer = r.tlsDone.Sub(r.dnsStart)
 		},
 
 		GotConn: func(i httptrace.GotConnInfo) {
+			r.m.Lock()
+			defer r.m.Unlock()
+
 			// Handle when keep alive is used and connection is reused.
 			// DNSStart(Done) and ConnectStart(Done) is skipped
 			if i.Reused {
@@ -89,6 +108,9 @@ func withClientTrace(ctx context.Context, r *Result) context.Context {
 		},
 
 		WroteRequest: func(info httptrace.WroteRequestInfo) {
+			r.m.Lock()
+			defer r.m.Unlock()
+
 			r.serverStart = time.Now()
 
 			// When client doesn't use DialContext or using old (before go1.7) `net`
@@ -123,6 +145,9 @@ func withClientTrace(ctx context.Context, r *Result) context.Context {
 		},
 
 		GotFirstResponseByte: func() {
+			r.m.Lock()
+			defer r.m.Unlock()
+
 			r.serverDone = time.Now()
 
 			r.ServerProcessing = r.serverDone.Sub(r.serverStart)
