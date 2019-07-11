@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -9,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/tcnksm/go-httpstat"
+	"github.com/tristangio/go-httpstat"
 )
 
 func main() {
@@ -36,7 +35,8 @@ func main() {
 		log.Fatal(err)
 	}
 	res.Body.Close()
-	result.End(time.Now())
 
-	fmt.Printf("%+v\n", result)
+	end := time.Now().UTC()
+	durations := result.GetDurations(end)
+	log.Printf("%+v", durations)
 }
